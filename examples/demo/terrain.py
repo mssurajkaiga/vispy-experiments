@@ -15,6 +15,7 @@ from scipy.spatial import Delaunay
 # Arrays for storing generated points and triangles
 points = []
 triangles = []
+height = 0.0
 
 def generate_terrain(r_min, r_max, c_min, c_max, disp):
     """Recursively generates terrain using diamond-square algorithm
@@ -55,7 +56,7 @@ def generate_points(length=3):
     Arguments:
     length - (2**length+1 by 2**length+1) number of points is generated
     """
-    global points, triangles
+    global points, triangles, height
     size = 2**(length) + 1
     points = np.zeros((size, size, 3)).astype(np.float32)
     for i in range(0, size):
@@ -63,6 +64,7 @@ def generate_points(length=3):
             points[i][j][0] = i
             points[i][j][1] = j
     generate_terrain(0, size-1, 0, size-1, length)
+    height = length
     points = np.resize(points, (size*size, 3))
     points2 = np.delete(points, 2, 1)
     tri = Delaunay(points2)
@@ -70,21 +72,27 @@ def generate_points(length=3):
     triangles = np.vstack(triangles)
 
 VERT_SHADER = """
+uniform   float u_height;
 uniform   mat4 u_model;
 uniform   mat4 u_view;
 uniform   mat4 u_projection;
 
 attribute vec3  a_position;
 
+varying vec4 v_color;
+
 void main (void) {
     gl_Position = u_projection * u_view * u_model * vec4(a_position, 1.0);
+    v_color = vec4(0.0, a_position[2]*a_position[2]/(u_height*u_height*u_height), 0.1, 1.0);
 }
 """
 
 FRAG_SHADER = """
+varying vec4 v_color;
+
 void main()
 {
-    gl_FragColor = vec4(0.0, 0.5, 0.0, 1.0);
+    gl_FragColor = v_color;
 }
 """
 
@@ -107,6 +115,7 @@ class Canvas(app.Canvas):
         self.translate = [0, 0, 0]
         self.rotate = [0, 0, 0]
 
+        self.program['u_height'] = height
         self.program['u_model'] = self.model
         self.program['u_view'] = self.view
 
@@ -185,7 +194,7 @@ class Canvas(app.Canvas):
         """Drawing as line strip is wrong as the VB represents triangles but
         it gives better visualization of the terrain with minor mistakes
         """
-        self.program.draw(gl.GL_LINE_STRIP)
+        self.program.draw(gl.GL_TRIANGLES)
 
 
 if __name__ == '__main__':
