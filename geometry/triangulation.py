@@ -48,6 +48,26 @@ def circuminfo(A,B,C):
     # returns circumcenter and circumradius
     return cc, distance(cc, A)
 
+# Check if the points lie in counter-clockwise order or not
+def iscounterclockwise(a, b, c):
+    A = np.array(list(pts[a]))
+    B = np.array(list(pts[b]))
+    C = np.array(list(pts[c]))
+    return np.cross(B-A, C-B)>0
+
+def isintersects(edge1, edge2):
+    A = np.array(list(pts[edge1[0]]))
+    B = np.array(list(pts[edge1[1]]))
+    C = np.array(list(pts[edge2[0]]))
+    D = np.array(list(pts[edge2[1]]))
+
+    E = B-A
+    F = D-C
+    P = np.array([-E[1], E[0]])
+    h = ((A-C).dot(P))/F.dot(P)
+    return (h>=0 and h<1)
+
+#user input data - points and constraining edges
 pts = [(0, 0),
        (10, 0),
        (10, 10),
@@ -59,18 +79,17 @@ pts = [(0, 0),
        (6, 15),
        (10, 12),
        (0, 5)]
+edges = [(4,1), (6,7)]
 
 pts = np.array(pts, dtype=[('x', float), ('y', float)])
-edges = np.array([(i, (i+1) % pts.shape[0]) for i in range(pts.shape[0])], dtype=int)
-print "Edges = {}".format(edges)
-
+edges = np.array(edges, dtype=int)
+edges_lookup = {}
 ## Initialization (sec. 3.3)
 
 # sort by y, then x
 order = np.argsort(pts, order=('y', 'x'))
 pts = pts[order]
-
-# update edges to match new point order
+# update display edges to match new point order
 invorder = np.argsort(order)
 edges = invorder[edges]
 
@@ -128,7 +147,7 @@ def draw_tri(tri):
     tri_shapes.append(shape)
 draw_state()
 
-## Legalize recursively
+## Legalize recursively - incomplete
 def legalize((f00, f11, p)):
     print "Legalizing points = {}, {}, {}".format(f00, f11, p)
     a = pts[f00]
@@ -149,6 +168,14 @@ def legalize((f00, f11, p)):
 def add_tri(f0, f1, p):
     # todo: legalize!
     global front, tris
+    if iscounterclockwise(front[f0], front[f1], p):
+        edges_lookup[(front[f0], front[f1])] = p
+        edges_lookup[(front[f1], p)] = front[f0]
+        edges_lookup[(p, front[f0])] = front[f1]
+    else:
+        edges_lookup[(front[f1], front[f0])] = p
+        edges_lookup[(p, front[f1])] = front[f0]
+        edges_lookup[(front[f0], p)] = front[f1]
     tri = legalize((front[f0], front[f1], p))
     tris.append(tri)
     front.insert(f1, p)
@@ -183,9 +210,40 @@ for i in range(3, len(pts)):
                     
     if i in tops: # this is an "edge event" (sec. 3.4.2)
         print "Locate first intersected triangle"
-        
-        pass
+        # Locate the other endpoint
+        found = False
+        for e in edges:
+            if i in e:
+                found = True
+                break
+        if not found:
+            print "Other end point not located"
+            continue
         # (i) locate intersected triangles
+        """
+        If the first intersected triangle contains the top point,
+        then start traversal there. Also, if an intersected triangle
+        contains the top point, then it has to be the first intersected
+        triangleself.
+        """
+        print edges_lookup
+        vals = edges_lookup.values()
+        intersects = False
+        for value in vals:
+            if value==i:
+                current_edge = edges_lookup.keys()[vals.index(i)]
+                if isintersects(current_edge, e):
+                    intersects = True
+                    break
+
+        if intersects:
+            print current_edge+(i,)
+            # now recursively check and remove all intersecting triangles
+            pass
+        else :
+            # perform other intersection tests
+            pass
+
         # (ii) remove intersected triangles
         # (iii) triangluate empty areas
 
@@ -195,4 +253,5 @@ for i in range(3, len(pts)):
 
 # (i) Remove all triangles that include at least one artificial point
 # (ii) Add bordering triangles to fill hull
+#print edges_lookup
 raw_input()
