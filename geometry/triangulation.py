@@ -67,6 +67,12 @@ def isintersects(edge1, edge2):
     h = ((A-C).dot(P))/F.dot(P)
     return (h>=0 and h<1)
 
+# check if the point is on which side - substitutes the point in the edge
+# equation and returns the value
+def orientation(edge, point):
+    m = float(pts[edge[1]][1]-pts[edge[0]][1])/float(pts[edge[1]][0]-pts[edge[0]][0])
+    return pts[point][1]-pts[edge[0]][1]-m*(pts[point][0]--pts[edge[0]][0])
+
 #user input data - points and constraining edges
 pts = [(0, 0),
        (10, 0),
@@ -184,6 +190,18 @@ def add_tri(f0, f1, p):
     # visual debugging
     draw_tri(tris[-1])
 
+def remove_tri((a, b, c)):
+    global tris
+    if edges_lookup[(a,b)]==c:
+        del edges_lookup[(a,b)]
+        del edges_lookup[(b,c)]
+        del edges_lookup[(c,a)]
+    else:
+        del edges_lookup[(b,a)]
+        del edges_lookup[(a,c)]
+        del edges_lookup[(c,b)]
+    tris.remove((a, b, c))
+
 for i in range(3, len(pts)):
     pi = pts[i]
     # First, triangulate from front to new point
@@ -215,6 +233,7 @@ for i in range(3, len(pts)):
         for e in edges:
             if i in e:
                 found = True
+                endpoint = e[0] if (e[0]==i) else e[1]
                 break
         if not found:
             print "Other end point not located"
@@ -231,20 +250,42 @@ for i in range(3, len(pts)):
         intersects = False
         for value in vals:
             if value==i:
-                current_edge = edges_lookup.keys()[vals.index(i)]
-                if isintersects(current_edge, e):
+                current_side = edges_lookup.keys()[vals.index(i)]
+                if isintersects(current_side, e):
                     intersects = True
                     break
 
+        # (ii) remove intersected triangles
+        # initialize lists for upper and lower polygon vertices
+        upper_polygon = []
+        lower_polygon = []
+
         if intersects:
-            print current_edge+(i,)
-            # now recursively check and remove all intersecting triangles
+            print current_side+(i,)
+            remove_tri(current_side+(i,))
+            if orientation(e, current_side[0])>0:
+                upper_polygon.append(current_side[0])
+                lower_polygon.append(current_side[1])
+            else:
+                upper_polygon.append(current_side[1])
+                lower_polygon.append(current_side[0])
+            # now traverse and remove all intersecting triangles
+            other_vertex = edges_lookup[current_side[::-1]]
+            while (other_vertex!=endpoint):
+                # now the edge intersects one of the triangles on either sides
+                # of current triangle, we find which one and continue the loop
+                side1 = (other_vertex,current_side[0])
+                if isintersects(side1, e):
+                    pass
+                else:
+                    side2 = (current_side[1], other_vertex)
+                    if isintersects(side2, e):
+                        pass
+                break
             pass
         else :
             # perform other intersection tests
             pass
-
-        # (ii) remove intersected triangles
         # (iii) triangluate empty areas
 
     draw_state()
