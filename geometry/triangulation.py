@@ -274,19 +274,32 @@ for i in range(3, len(pts)):
             while (other_vertex!=endpoint):
                 # now the edge intersects one of the triangles on either sides
                 # of current triangle, we find which one and continue the loop
-                side1 = (other_vertex,current_side[0])
+                side1 = (current_side[0], other_vertex)
                 if isintersects(side1, e):
-                    pass
+                    other_vertex = edges_lookup[side1[::-1]]
+                    current_side = side1
                 else:
-                    side2 = (current_side[1], other_vertex)
+                    side2 = (other_vertex, current_side[1])
                     if isintersects(side2, e):
-                        pass
-                break
-            pass
+                        other_vertex = edges_lookup[side2[::-1]]
+                        current_side = side2
+                    else:
+                        # edge passes through the other_vertex
+                        print "does not intersect any other side, need to handle it"
+                        break
+
+                if orientation(e, current_side[0])>0:
+                    upper_polygon.append(current_side[0])
+                    lower_polygon.append(current_side[1])
+                else:
+                    upper_polygon.append(current_side[1])
+                    lower_polygon.append(current_side[0])
         else :
             # perform other intersection tests
             pass
         # (iii) triangluate empty areas
+        print "Upper polygon ", upper_polygon
+        print "Lower polygon ", lower_polygon
 
     draw_state()
 
