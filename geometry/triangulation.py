@@ -10,15 +10,41 @@ Sweep‐line algorithm for constrained Delaunay triangulation
 
 import numpy as np
 from math import cos
+from collections import OrderedDict
+from itertools import permutations
 
 # Distance between points A and B
-def distance(A,B):
+def distance(A, B):
     n = len(A)
     assert len(B) == n
     return sum((A[i]-B[i])**2 for i in xrange(n))**0.5
 
+# Distance of a set of points from a given line
+def distances_from_line(e, points):
+    e1 = np.array(list(pts[e[0]]))
+    e2 = np.array(list(pts[e[1]]))
+    distances = []
+    # check if e is not just a point
+    l2 = float(distance(e1, e2))
+    l2 *= l2
+    if l2==0:
+        for p in points:
+            distances.append(distance(e1, pts[p]))
+
+    else:
+        for p in points:
+            t = float((np.array(list(pts[p])) - e1).dot(e2 - e1))/l2
+            if (t < 0.0):
+                distances.append(distance(pts[p], e1))
+            elif (t > 0.0):
+                distances.append(distance(pts[p], e2))
+            else:
+                projection = e1 + t * (e2 - e1)
+                distances.append(distance(pts[p], projection))
+    return distances
+
 # Cosine of angle ABC
-def cosine(A,B,C):
+def cosine(A, B, C):
     a,b,c = distance(B,C), distance(A,C), distance(A,B)
     return (a*a+c*c-b*b)/(2*a*c)
 
@@ -55,7 +81,8 @@ def iscounterclockwise(a, b, c):
     C = np.array(list(pts[c]))
     return np.cross(B-A, C-B)>0
 
-def isintersects(edge1, edge2):
+def intersection(edge1, edge2):
+    global pts
     A = np.array(list(pts[edge1[0]]))
     B = np.array(list(pts[edge1[1]]))
     C = np.array(list(pts[edge2[0]]))
@@ -64,7 +91,15 @@ def isintersects(edge1, edge2):
     E = B-A
     F = D-C
     P = np.array([-E[1], E[0]])
-    h = ((A-C).dot(P))/F.dot(P)
+    f = float(F.dot(P))
+    if f==0.:
+        return float('Inf')
+    h = float((A-C).dot(P))/f
+    return h
+
+def isintersects(edge1, edge2):
+    global pts
+    h = intersection(edge1, edge2)
     return (h>=0 and h<1)
 
 # check if the point is on which side - substitutes the point in the edge
@@ -155,7 +190,7 @@ draw_state()
 
 ## Legalize recursively - incomplete
 def legalize((f00, f11, p)):
-    print "Legalizing points = {}, {}, {}".format(f00, f11, p)
+    #print "Legalizing points = {}, {}, {}".format(f00, f11, p)
     a = pts[f00]
     b = pts[f11]
     c = pts[p]
@@ -166,6 +201,7 @@ def legalize((f00, f11, p)):
         elif distance(cc, point) < cr:
            print "Illegal point"
            print point
+
     return (f00, f11, p)
 
 
@@ -184,14 +220,35 @@ def add_tri(f0, f1, p):
         edges_lookup[(front[f0], p)] = front[f1]
     tri = legalize((front[f0], front[f1], p))
     tris.append(tri)
-    front.insert(f1, p)
-    print "Inserted at position f1={} value p={}".format(f1,p)
-    print "front = {}".format(front)
+    #print "Inserted at position f1={} value p={}".format(f1,p)
+    #print "front = {}".format(front)
     # visual debugging
-    draw_tri(tris[-1])
+    #draw_tri(tris[-1])
+
+def add_triangle(a, b, c):
+    # todo: legalize!
+    global tris
+    if iscounterclockwise(a, b, c):
+        edges_lookup[(a, b)] = c
+        edges_lookup[(b, c)] = a
+        edges_lookup[(c, a)] = b
+    else:
+        edges_lookup[(b, a)] = c
+        edges_lookup[(c, b)] = a
+        edges_lookup[(a, c)] = b
+    tri = legalize((a, b, c))
+    tris.append(tri)
 
 def remove_tri((a, b, c)):
     global tris
+    
+    for k in permutations((a, b, c)):
+        if k in tris:
+            tris.remove(k)
+            break
+
+    (a, b, c) = k
+
     if edges_lookup[(a,b)]==c:
         del edges_lookup[(a,b)]
         del edges_lookup[(b,c)]
@@ -200,7 +257,6 @@ def remove_tri((a, b, c)):
         del edges_lookup[(b,a)]
         del edges_lookup[(a,c)]
         del edges_lookup[(c,b)]
-    tris.remove((a, b, c))
 
 for i in range(3, len(pts)):
     pi = pts[i]
@@ -216,24 +272,27 @@ for i in range(3, len(pts)):
     if pi['x'] > pl['x']:  # "(i) middle case"
         # Add a single triangle connecting pi,pl,pr
         add_tri(l, l+1, i)
+        front.insert(l+1, i)
     else: # "(ii) left case"
         ps = pts[l-1]
         # Add triangles connecting pi,pl,ps and pi,pl,pr
         add_tri(l, l+1, i)
+        front.insert(l+1, i)
         add_tri(l-1, l, i)
+        front.insert(l, i)
         front.pop(l+1)
         
     # todo: Continue adding triangles to smooth out front
     # (use heuristics shown in figs. 9, 10)
                     
     if i in tops: # this is an "edge event" (sec. 3.4.2)
-        print "Locate first intersected triangle"
+        #print "Locate first intersected triangle"
         # Locate the other endpoint
         found = False
         for e in edges:
             if i in e:
                 found = True
-                endpoint = e[0] if (e[0]==i) else e[1]
+                endpoint = e[0] if (e[1]==i) else e[1]
                 break
         if not found:
             print "Other end point not located"
@@ -245,7 +304,7 @@ for i in range(3, len(pts)):
         contains the top point, then it has to be the first intersected
         triangleself.
         """
-        print edges_lookup
+        #print edges_lookup
         vals = edges_lookup.values()
         intersects = False
         for value in vals:
@@ -256,13 +315,26 @@ for i in range(3, len(pts)):
                     break
 
         # (ii) remove intersected triangles
-        # initialize lists for upper and lower polygon vertices
+        # initialize set(to remove redundancy) for upper and lower vertices
         upper_polygon = []
         lower_polygon = []
 
-        if intersects:
+        if not intersects:
+            # find the closest intersection to point
+            h_max = 0
+            closest_edge = None
+            for edge in edges_lookup.keys():
+                h = intersection(edge, e)
+                if h>=0 and h<1 and h>h_max:
+                    h_max = h
+                    closest_edge = edge
+
+        else:
+            print "Removed triangle = "
             print current_side+(i,)
             remove_tri(current_side+(i,))
+            upper_polygon.append(i)
+            lower_polygon.append(i)
             if orientation(e, current_side[0])>0:
                 upper_polygon.append(current_side[0])
                 lower_polygon.append(current_side[1])
@@ -271,6 +343,7 @@ for i in range(3, len(pts)):
                 lower_polygon.append(current_side[0])
             # now traverse and remove all intersecting triangles
             other_vertex = edges_lookup[current_side[::-1]]
+            remove_tri(current_side+(other_vertex, ))
             while (other_vertex!=endpoint):
                 # now the edge intersects one of the triangles on either sides
                 # of current triangle, we find which one and continue the loop
@@ -278,14 +351,16 @@ for i in range(3, len(pts)):
                 if isintersects(side1, e):
                     other_vertex = edges_lookup[side1[::-1]]
                     current_side = side1
+                    remove_tri(current_side+(other_vertex, ))
                 else:
                     side2 = (other_vertex, current_side[1])
                     if isintersects(side2, e):
                         other_vertex = edges_lookup[side2[::-1]]
                         current_side = side2
+                        remove_tri(current_side+(other_vertex, ))
                     else:
                         # edge passes through the other_vertex
-                        print "does not intersect any other side, need to handle it"
+                        #print "does not intersect any other side, need to handle it"
                         break
 
                 if orientation(e, current_side[0])>0:
@@ -294,18 +369,38 @@ for i in range(3, len(pts)):
                 else:
                     upper_polygon.append(current_side[1])
                     lower_polygon.append(current_side[0])
-        else :
-            # perform other intersection tests
-            pass
-        # (iii) triangluate empty areas
-        print "Upper polygon ", upper_polygon
-        print "Lower polygon ", lower_polygon
 
-    draw_state()
+        upper_polygon = list(OrderedDict.fromkeys(upper_polygon))
+        lower_polygon = list(OrderedDict.fromkeys(lower_polygon))
+        upper_polygon.append(endpoint)
+        lower_polygon.append(endpoint)
+
+        # (iii) triangluate empty areas
+        
+        # triangulate upper area
+        upper_dist = distances_from_line(e, upper_polygon)
+        while len(upper_polygon) > 2:
+            i = np.argmax(upper_dist)
+            print "i = ", i, upper_polygon[i], upper_polygon[i-1], upper_polygon[i+1]
+            add_triangle(upper_polygon[i], upper_polygon[i-1], upper_polygon[i+1])  # add_tri does legalization with new triangle
+            upper_polygon.pop(i)
+            upper_dist.pop(i)
+
+        lower_dist = distances_from_line(e, lower_polygon)
+        while len(lower_polygon) > 2:
+            i = np.argmax(lower_dist)
+            add_triangle(lower_polygon[i], lower_polygon[i-1], lower_polygon[i+1])  # add_tri does legalization with new triangle
+            lower_polygon.pop(i)
+            lower_dist.pop(i)
+    #draw_state()
 
 ## Finalize (sec. 3.5)
 
 # (i) Remove all triangles that include at least one artificial point
 # (ii) Add bordering triangles to fill hull
-#print edges_lookup
+##print edges_lookup
+print tris
+for tri in tris:
+    draw_tri(tri)
+draw_state()
 raw_input()
